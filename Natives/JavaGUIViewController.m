@@ -218,43 +218,55 @@ dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         _requiredJavaVersion = 0;
     });
 }
-
+//below code is copy-pasted from SurfaceViewController
 - (void)loadCustomControls {
-    NSMutableDictionary *dict = [[NSMutableDictionary alloc] init];
-    dict[@"version"] = @(4);
-    dict[@"scaledAt"] = @(100);
-    dict[@"mControlDataList"] = [[NSMutableArray alloc] init];
-    //dict[@"mDrawerDataList"] = [[NSMutableArray alloc] init];
-    [dict[@"mControlDataList"] addObject:createButton(@"Keyboard",
-        (int[]){SPECIALBTN_KEYBOARD,0,0,0},
-        @"${margin}", @"${margin}",
-        BTN_RECT
-    )];
-#if 0 // WIP: virtual mouse
-    [dict[@"mControlDataList"] addObject:createButton(@"Mouse",
-        (int[]){SPECIALBTN_VIRTUALMOUSE,0,0,0},
-        @"${right} - ${margin}", @"${margin}",
-        BTN_RECT
-    )];
-#endif
-    [dict[@"mControlDataList"] addObject:createButton(@"PRI",
-        (int[]){SPECIALBTN_MOUSEPRI,0,0,0},
-        @"${margin}", @"${bottom} - ${margin}",
-        BTN_RECT
-    )];
-    [dict[@"mControlDataList"] addObject:createButton(@"SEC",
-        (int[]){SPECIALBTN_MOUSESEC,0,0,0},
-        @"${margin} * 2 + ${width}", @"${bottom} - ${margin}",
-        BTN_RECT
-    )];
-    [self.ctrlView loadControlLayout:dict];
+    self.edgeGesture.enabled = YES;
+    [self.swipeableButtons removeAllObjects];
+    NSString *controlFile = [PLProfiles resolveKeyForCurrentProfile:@"defaultTouchCtrl"];
+    [self.ctrlView loadControlFile:controlFile];
 
-    // Implement a subset of custom controls functionalites enough for few buttons
+    ControlButton *menuButton;
     for (ControlButton *button in self.ctrlView.subviews) {
+        BOOL isSwipeable = [button.properties[@"isSwipeable"] boolValue];
+
+        button.canBeHidden = YES;
+        BOOL isMenuButton = NO;
+        for (int i = 0; i < 4; i++) {
+            int keycodeInt = [button.properties[@"keycodes"][i] intValue];
+            button.canBeHidden &= keycodeInt != SPECIALBTN_TOGGLECTRL && keycodeInt != SPECIALBTN_VIRTUALMOUSE;
+            if (keycodeInt == SPECIALBTN_MENU) {
+                menuButton = button;
+            }
+        }
+
         [button addTarget:self action:@selector(executebtn_down:) forControlEvents:UIControlEventTouchDown];
-        [button addTarget:self action:@selector(executebtn_up:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+        [button addTarget:self action:@selector(executebtn_up_inside:) forControlEvents:UIControlEventTouchUpInside];
+        [button addTarget:self action:@selector(executebtn_up_outside:) forControlEvents:UIControlEventTouchUpOutside];
+
+        if (isSwipeable) {
+            UIPanGestureRecognizer *panRecognizerButton = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(executebtn_swipe:)];
+            panRecognizerButton.delegate = self;
+            [button addGestureRecognizer:panRecognizerButton];
+            [self.swipeableButtons addObject:button];
+        }
+    }
+
+    [self updateControlHiddenState:self.toggleHidden];
+
+    if (menuButton) {
+        NSMutableArray *items = [NSMutableArray new];
+        for (int i = 0; i < self.menuArray.count; i++) {
+            UIAction *item = [UIAction actionWithTitle:localize(self.menuArray[i], nil) image:nil identifier:nil
+                handler:^(id action) {[self didSelectMenuItem:i];}];
+            [items addObject:item];
+        }
+        menuButton.menu = [UIMenu menuWithTitle:@"" image:nil identifier:nil
+            options:UIMenuOptionsDisplayInline children:items];
+        menuButton.showsMenuAsPrimaryAction = YES;
+        self.edgeGesture.enabled = NO;
     }
 }
+
 
 @synthesize requiredJavaVersion = _requiredJavaVersion;
 - (int)requiredJavaVersion {
